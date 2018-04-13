@@ -1,3 +1,4 @@
+import sys
 import time
 import scipy.special
 import numpy as np
@@ -32,15 +33,23 @@ def init():
     MAF: float
         Minor Allele Frequency, should be less than 1.
     """
+    if len(sys.argv) != 9:
+        print("Number of arguments don't meet program's requirements.", 
+              "Please Check again!")
+        print("You should specify inputFileName, outputFileName, iterNum,", 
+              "burninNum, obsNum, \n\tSNPNum, PhenoNum, MAF in the arguments.")
+        print("Here is an example: ")
+        print(">>> python np_bhit.py input.txt output.txt 30000 25000 200 100 1 0.05")
+        quit()
     
-    dataset = np.loadtxt('input.txt')
-    outFileName = 'output.txt'
-    iterNum = 30000
-    burninNum = 29000
-    obsNum = 200
-    SNPNum = 100
-    PhenoNum = 1
-    MAF = 0.5
+    dataset = np.loadtxt(sys.argv[1])
+    outFileName = sys.argv[2]
+    iterNum = int(sys.argv[3])
+    burninNum = int(sys.argv[4])
+    obsNum = int(sys.argv[5])
+    SNPNum = int(sys.argv[6])
+    PhenoNum = int(sys.argv[7])
+    MAF = float(sys.argv[8])
     
     return dataset, outFileName, iterNum, burninNum, obsNum, SNPNum, PhenoNum, MAF
 
@@ -255,7 +264,7 @@ def metroHast(iterNum, burninNum):
     Ix = np.arange(TotalNum)
     Dx = Ix[:SNPNum]
     Cx = Ix[SNPNum:TotalNum]
-    seq = np.arange(TotalNum)
+    iN = np.zeros([TotalNum, TotalNum+1])
     
     # Uncomment if you want to trace probabilities.
     # trace = np.zeros(iterNum)
@@ -267,7 +276,7 @@ def metroHast(iterNum, burninNum):
         # Select an index, then change it to another index randomly.
         while True:
             # Sort the number to ensure changing from small index to big one.
-            x, y = np.sort(np.random.choice(seq, 2, False))
+            x, y = np.sort(np.random.choice(Ix, 2, False))
             k = np.where(Ix == x)[0]
             
             if len(k) > 1:
@@ -278,7 +287,7 @@ def metroHast(iterNum, burninNum):
           
             tmp1 = np.where(Ix == x)[0]
             tmp2 = np.where(Iy == y)[0]
-            if (len(tmp1)!=1 or len(tmp2)!=1):
+            if (len(tmp1)>1 or len(tmp2)>1):
                 break
 
         # Create the proposed indicator vector.
@@ -337,7 +346,7 @@ def metroHast(iterNum, burninNum):
         # trace[i] = trace[i-1]
         
         # Check if proposal is accepted, if so, update everything.
-        accept = np.log(np.random.rand()) <= min(0.0, new_prob-old_prob)
+        accept = np.log(np.random.rand()) <= min(0, new_prob-old_prob)
         if accept:
             Ix = np.array(Iy)
             Cx = np.array(Cy)
@@ -349,7 +358,6 @@ def metroHast(iterNum, burninNum):
             
         # When MCMC gets convergence, we start to count indices.
         if i >= burninNum:
-            iN = np.zeros([TotalNum, TotalNum+1])
             for h in range(TotalNum):
                 tmp = np.where(Ix==h)[0]
                 if (len(tmp) == 1):
@@ -381,8 +389,7 @@ def metroHast(iterNum, burninNum):
     # Uncomment if you want to save trace file.
     # np.savetxt(outFileName+"_trace", trace, fmt='%.1f')
     
-    print(Ix)   # for debugging usage, can be removed
-    return mhResult
+    return mhResult, Ix
 
 #==============================================================================
 # Main entry begins here
@@ -393,8 +400,8 @@ start = time.time()
 (dataset, outFileName, iterNum, burninNum, obsNum, 
     SNPNum, PhenoNum, MAF) = init()
 TotalNum = SNPNum + PhenoNum
-genotype = dataset[:, :SNPNum].astype(np.int32)
-phenotype = dataset[:, SNPNum:TotalNum].astype(np.float32)
+genotype = dataset[:, :SNPNum].astype(int)
+phenotype = dataset[:, SNPNum:TotalNum]
 odds = np.array([(1-MAF)**2, 2*MAF*(1-MAF), MAF**2])
 
 # Define hyper-parameters here.
@@ -411,6 +418,7 @@ print("Initialization Completed!")
 
 # Detection using Metropolis–Hastings algorithm.
 mhResult, index = metroHast(iterNum, burninNum)
+print(index)        # for debugging usage, can be removed
 np.savetxt(outFileName, mhResult, fmt='%i')
 
 # Output running time of the program.
