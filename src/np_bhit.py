@@ -39,7 +39,7 @@ def init():
         print("You should specify inputFileName, outputFileName, iterNum,", 
               "burninNum, obsNum, \n\tSNPNum, PhenoNum, MAF in the arguments.")
         print("Here is an example: ")
-        print(">>> python np_bhit.py input.txt output.txt 30000 25000 200 100 1 0.05")
+        print(">>> python np_bhit.py input.txt output.npy 30000 29000 200 100 1 0.5")
         quit()
     
     dataset = np.loadtxt(sys.argv[1])
@@ -61,7 +61,7 @@ def unique(arr, return_counts=True):
 
     Parameters
     ----------
-    arr : array_like
+    arr: array_like
         Input array.
     return_counts: bool
         If True, also return the number of times each unique item appears
@@ -129,44 +129,12 @@ def unique(arr, return_counts=True):
         uniq = reshape_uniq(output[0])
         return (uniq,) + output[1:]
 
-def logLikeDepe(discArr, contArr):
-    """
-    Calculate logarithmic likelihood of partitions with both continuous and 
-    discrete variates by finding the continous rows corresponding to unique 
-    discrete observations and calculating the probability those continous 
-    observations came from a single multivariate Gaussian distribution.
-
-    Parameters
-    ----------
-    discArr: array_like
-        Input discrete array.
-    contArr: array_like
-        Input continous array.
-    
-    Returns
-    ----------
-    logProb: float
-        Logarithmic likelihood.
-    """
-    X = np.asanyarray(discArr)
-    Y = np.asanyarray(contArr)
-    variations = unique(X, return_counts=False)
-    logProb = 0
-    
-    for v in variations:
-        corres_row = np.prod((X==v), axis=1)
-        corres_Y = Y[corres_row==1]
-        logProb += logLikeCont(corres_Y)
-    logProb += logLikeDisc(X)
-
-    return logProb
-
 def logLikeCont(contArr):
     """
     Calculate logarithmic likelihood of only continuous variates given the 
-    phenotype array. Variates are assumed to be independent if there is 
-    only one column, and from a multivariate Gaussian distribution if there 
-    are multiple columns.
+    data array. Variates are assumed to be independent if there is only 
+    one column, and from a multivariate Gaussian distribution if there are 
+    multiple columns.
 
     Parameters
     ----------
@@ -176,7 +144,7 @@ def logLikeCont(contArr):
     Returns
     ----------
     logProb: float
-        Logarithmic likelihood.
+        Logarithmic likelihood of continuous variates.
     """
     Y = np.asanyarray(contArr)
     obsNum, varNum = Y.shape
@@ -216,8 +184,8 @@ def logLikeCont(contArr):
 def logLikeDisc(discArr):
     """
     Calculate logarithmic likelihood of only discrete variates given the 
-    genotype array. Variates are assumed to be independent if there is 
-    only one column, and from a joint Dirichlet distribution if there are 
+    data array. Variates are assumed to be independent if there is only 
+    one column, and from a joint Dirichlet distribution if there are 
     multiple columns.
 
     Parameters
@@ -234,12 +202,44 @@ def logLikeDisc(discArr):
     X = np.asanyarray(discArr)
     uniqueArr, N = unique(X)
     
-    alpha = odds[uniqueArr-1]
+    alpha = Odds[uniqueArr-1]
     alpha = np.prod(alpha, axis=1)
     n_plus_alpha = N + alpha
     
     logProb = np.sum(scipy.special.gammaln(n_plus_alpha) - scipy.special.gammaln(alpha))
     logProb -= scipy.special.gammaln(np.sum(n_plus_alpha))
+    return logProb
+
+def logLikeDepe(discArr, contArr):
+    """
+    Calculate logarithmic likelihood of partitions with both continuous and 
+    discrete variates by finding the continous rows corresponding to unique 
+    discrete observations and calculating the probability those continous 
+    observations came from a single multivariate Gaussian distribution.
+
+    Parameters
+    ----------
+    discArr: array_like
+        Input discrete array.
+    contArr: array_like
+        Input continous array.
+    
+    Returns
+    ----------
+    logProb: float
+        Logarithmic likelihood.
+    """
+    X = np.asanyarray(discArr)
+    Y = np.asanyarray(contArr)
+    variations = unique(X, return_counts=False)
+    logProb = 0
+    
+    for v in variations:
+        corres_row = np.prod((X==v), axis=1)
+        corres_Y = Y[corres_row==1]
+        logProb += logLikeCont(corres_Y)
+    logProb += logLikeDisc(X)
+
     return logProb
 
 def metroHast(iterNum, burninNum):
@@ -260,6 +260,8 @@ def metroHast(iterNum, burninNum):
     ----------
     mhResult: ndarray
         Final partition matrix for each covariate.
+    Ix: ndarray
+        Final index vector.
     """
     Ix = np.arange(TotalNum)
     Dx = Ix[:SNPNum]
@@ -268,8 +270,8 @@ def metroHast(iterNum, burninNum):
     
     # Uncomment if you want to trace probabilities.
     # trace = np.zeros(iterNum)
-    # trace[0] += np.sum([logLikDisc(genotype[:, Dx==col]) for col in range(SNPNum)])
-    # trace[0] += np.sum([logLikCont(phenotype[:, Cx==col]) for col in range(SNPNum,TotalNum)])
+    # trace[0] += np.sum([logLikDisc(Genotype[:, Dx==col]) for col in range(SNPNum)])
+    # trace[0] += np.sum([logLikCont(Phenotype[:, Cx==col]) for col in range(SNPNum,TotalNum)])
 
     # Main Metropolis-Hastings loop.
     for i in range(1, iterNum):
@@ -293,14 +295,14 @@ def metroHast(iterNum, burninNum):
         # Create the proposed indicator vector.
         Dy = Iy[:SNPNum]
         Cy = Iy[SNPNum:TotalNum]
-        Cxx = phenotype[:,Cx == x]
-        Cxy = phenotype[:,Cx == y]
-        Cyx = phenotype[:,Cy == x]
-        Cyy = phenotype[:,Cy == y]
-        Dxx = genotype[:,Dx == x]
-        Dxy = genotype[:,Dx == y]
-        Dyx = genotype[:,Dy == x]
-        Dyy = genotype[:,Dy == y]
+        Cxx = Phenotype[:,Cx == x]
+        Cxy = Phenotype[:,Cx == y]
+        Cyx = Phenotype[:,Cy == x]
+        Cyy = Phenotype[:,Cy == y]
+        Dxx = Genotype[:,Dx == x]
+        Dxy = Genotype[:,Dx == y]
+        Dyx = Genotype[:,Dy == x]
+        Dyy = Genotype[:,Dy == y]
         
         # Calculate log likelihoods.
         old_prob = 0
@@ -400,18 +402,18 @@ start = time.time()
 (dataset, outFileName, iterNum, burninNum, obsNum, 
     SNPNum, PhenoNum, MAF) = init()
 TotalNum = SNPNum + PhenoNum
-genotype = dataset[:, :SNPNum].astype(int)
-phenotype = dataset[:, SNPNum:TotalNum]
-odds = np.array([(1-MAF)**2, 2*MAF*(1-MAF), MAF**2])
+Genotype = dataset[:, :SNPNum].astype(int)
+Phenotype = dataset[:, SNPNum:TotalNum]
+Odds = np.array([(1-MAF)**2, 2*MAF*(1-MAF), MAF**2])
 
 # Define hyper-parameters here.
 KAPPA0 = 1
 NU0 = PhenoNum + 1
-MEANS = np.average(phenotype, axis=0)
+MEANS = np.average(Phenotype, axis=0)
 MU0 = max(MEANS) + 2
 
 # Check if input file format is valid.
-if (genotype.shape[0] != phenotype.shape[0]):
+if (Genotype.shape[0] != Phenotype.shape[0]):
     print("Discrete and continuous data must have same number of rows!\n")
     quit()
 print("Initialization Completed!")
@@ -419,7 +421,7 @@ print("Initialization Completed!")
 # Detection using Metropolis–Hastings algorithm.
 mhResult, index = metroHast(iterNum, burninNum)
 print(index)        # for debugging usage, can be removed
-np.savetxt(outFileName, mhResult, fmt='%i')
+np.savetxt(outFileName, mhResult)       # save output file
 
 # Output running time of the program.
 end = time.time()
