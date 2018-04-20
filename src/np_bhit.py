@@ -197,7 +197,6 @@ def logLikeDisc(discArr):
     ----------
     logProb: float
         Logarithmic likelihood of discrete variates.
-
     """
     X = np.asanyarray(discArr)
     uniqueArr, N = unique(X)
